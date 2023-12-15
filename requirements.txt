@@ -1,0 +1,5 @@
+
+requests
+redis[hiredis]==5.0.1
+environs
+yt_dlp
