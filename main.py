@@ -66,7 +66,7 @@ def main(youtube_channel, rtmp):
                 playing_id = video_ids[(index + 1) % len(video_ids)]
 
         filepath = os.path.join(VIDEO_HOME, f'{playing_id}.mp4')
-        commands = f"ffmpeg -re -i {filepath} -c:v libx264 -c:a aac -b:a 192k -strict -2 -f flv {rtmp}"
+        commands = f"ffmpeg -re -i {filepath} -c:v libx264 -c:a aac -r 30 -g 60 -b:v 6m -b:a 192k -strict -2 -f flv {rtmp}"
 
         print(f'start to podcast {os.path.basename(filepath)}')
         subprocess.run(commands, shell=True, cwd=VIDEO_HOME)
