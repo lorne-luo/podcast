@@ -5,7 +5,6 @@ import sys
 import yt_dlp
 from redis import Redis
 from environs import Env
-from downloader import download_youtube_audio
 
 env = Env()
 env.read_env()  # read .env file, if it exists
