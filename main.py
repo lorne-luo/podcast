@@ -2,6 +2,7 @@ import os
 import subprocess
 import sys
 from random import randint
+from threading import Thread
 
 import yt_dlp
 from redis import Redis, ConnectionPool
@@ -20,6 +21,8 @@ pool = ConnectionPool(host=redis_host, port=redis_port, password=REDIS_CLOUD_PAS
                       max_connections=1,
                       decode_responses=True)
 redis_client = Redis(connection_pool=pool)
+
+downloading_threads = {}
 
 
 def get_video_ids(youtube_channel):
@@ -56,6 +59,17 @@ def download_videos(video_ids):
         download_youtube_audio(video_id, file_path)
 
 
+def start_download(new_id):
+    # launch thread to download
+    if new_id in downloading_threads:
+        return
+
+    file_path = os.path.join(VIDEO_HOME, f'{new_id}.mp4')
+    p = Thread(target=download_youtube_audio, args=(new_id, file_path))
+    p.start()
+    downloading_threads[new_id] = p
+
+
 def main(youtube_channel, rtmp):
     playing_id = None
     video_ids = get_video_ids(youtube_channel)
@@ -63,7 +77,10 @@ def main(youtube_channel, rtmp):
     index = randint(0, len(video_ids))
 
     while True:
-        video_ids = get_video_ids(youtube_channel)
+        for new_id in get_video_ids(youtube_channel):
+            if new_id not in video_ids and new_id not in downloading_threads:
+                start_download(new_id)
+
         if index == 0:
             playing_id = video_ids[index]
         else:
@@ -81,11 +98,14 @@ def main(youtube_channel, rtmp):
         print(f'Start #{index} {os.path.basename(filepath)}')
         subprocess.run(commands, shell=True, cwd=VIDEO_HOME)
 
+        keys = downloading_threads.keys()
+        for downloading_id in keys:
+            if not downloading_threads[downloading_id].is_alive():
+                video_ids.append(downloading_id)
+                downloading_threads.pop(downloading_id)
+
 
 if __name__ == '__main__':
     youtube_channel = sys.argv[1]
-    redis_client = Redis(host=redis_host, port=redis_port, password=REDIS_CLOUD_PASSWORD, decode_responses=True)
-
     rtmp = redis_client.get(youtube_channel + ':YOUTUBE_RTMP')
-
     main(youtube_channel, rtmp)
