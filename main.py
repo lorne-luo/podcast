@@ -1,9 +1,10 @@
 import os
 import subprocess
 import sys
+from random import randint
 
 import yt_dlp
-from redis import Redis
+from redis import Redis, ConnectionPool
 from environs import Env
 
 env = Env()
@@ -15,9 +16,13 @@ VIDEO_HOME = env.str("VIDEO_HOME")
 redis_host = 'redis-12452.c296.ap-southeast-2-1.ec2.cloud.redislabs.com'
 redis_port = 12452
 
+pool = ConnectionPool(host=redis_host, port=redis_port, password=REDIS_CLOUD_PASSWORD,
+                      max_connections=1,
+                      decode_responses=True)
+redis_client = Redis(connection_pool=pool)
+
 
 def get_video_ids(youtube_channel):
-    redis_client = Redis(host=redis_host, port=redis_port, password=REDIS_CLOUD_PASSWORD, decode_responses=True)
     return redis_client.json().get(youtube_channel + ':VIDEO_IDS')
 
 
@@ -41,9 +46,9 @@ def download_youtube_audio(youtube_id, output):
         downloader.download([youtube_id])
 
 
-def download(youtube_channel):
+def download_videos(video_ids):
     os.makedirs(VIDEO_HOME, exist_ok=True)
-    for video_id in get_video_ids(youtube_channel):
+    for video_id in video_ids:
         file_path = os.path.join(VIDEO_HOME, f'{video_id}.mp4')
         if os.path.isfile(file_path):
             continue
@@ -53,9 +58,11 @@ def download(youtube_channel):
 
 def main(youtube_channel, rtmp):
     playing_id = None
-    index = 0
+    video_ids = get_video_ids(youtube_channel)
+    download_videos(video_ids)
+    index = randint(0, len(video_ids))
+
     while True:
-        download(youtube_channel)
         video_ids = get_video_ids(youtube_channel)
         if index == 0:
             playing_id = video_ids[index]
@@ -65,10 +72,13 @@ def main(youtube_channel, rtmp):
             else:
                 playing_id = video_ids[(index + 1) % len(video_ids)]
 
+        index += 1
         filepath = os.path.join(VIDEO_HOME, f'{playing_id}.mp4')
-        commands = f"ffmpeg -re -i {filepath} -c:v libx264 -c:a aac -r 30 -g 60 -bufsize 8m -b:v 6m -b:a 192k -strict -2 -f flv {rtmp}"
+        if not os.path.isfile(filepath):
+            continue
 
-        print(f'start to podcast {os.path.basename(filepath)}')
+        commands = f"ffmpeg -hide_banner -nostdin -v error -stats -re -i {filepath} -c:v libx264 -c:a aac -r 24 -g 60 -bufsize 128m -b:v 6000k -b:a 384k -strict -2 -f flv {rtmp}"
+        print(f'Start #{index} {os.path.basename(filepath)}')
         subprocess.run(commands, shell=True, cwd=VIDEO_HOME)
 
 
